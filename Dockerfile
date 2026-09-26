@@ -1,17 +1,22 @@
+# syntax=docker/dockerfile:1
+
 FROM php:8.4-alpine AS seat-core
 
 # Composer
 RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin \
     --filename=composer && hash -r
 
-# Create SeAT package with its dependencies
+# Git is required to resolve the star-seat forks
+RUN apk add --no-cache git
+
+# Clone the star-seat project and install its dependencies
 COPY version /tmp/seat-version
-RUN composer create-project eveseat/seat:^5.0 --stability dev --no-scripts --no-dev --no-ansi --no-progress --ignore-platform-reqs && \
-    composer clear-cache --no-ansi && \
-    # Setup the default configuration file \
+RUN git clone --depth 1 --branch star/build https://github.com/Nauclerus/star-seat.git seat && \
     cd seat && \
+    composer update --no-scripts --no-dev --no-ansi --no-progress --ignore-platform-reqs && \
+    composer clear-cache --no-ansi && \
     php -r "file_exists('.env') || copy('.env.example', '.env');" && \
-    mv /tmp/seat-version /seat/storage/version
+    mv /tmp/seat-version storage/version
 
 FROM php:8.4-apache-bookworm AS seat
 
@@ -26,7 +31,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
   && apt-get update \
   && apt-get install -y --no-install-recommends \
     iputils-ping dnsutils \ 
-    pkg-config build-essential \
+    pkg-config build-essential git \
     zip unzip libzip-dev libbz2-dev \
     mariadb-client libpq-dev redis-tools libpq5 postgresql-client \
     libpng-dev libjpeg62-turbo-dev libfreetype6-dev libwebp-dev \
@@ -50,7 +55,7 @@ RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local
     --filename=composer && hash -r
 
 # User and Group
-RUN groupadd -r -g 200 seat && useradd --no-log-init -r -g seat -u 200 seat
+RUN groupadd -r -g 200 seat && useradd --no-log-init -r -m -g seat -u 200 seat
 
 # Changing default Apache port to allow rootless container exploitation
 #
